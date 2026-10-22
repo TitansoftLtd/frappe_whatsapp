@@ -180,6 +180,25 @@ def send_message(number, message=None, attach=None):
 	)[0]
 
 
+@frappe.whitelist()
+def retry_message(name):
+	check_access("create")
+
+	doc = frappe.get_doc("WhatsApp Message", name)
+	if doc.type != "Outgoing" or (doc.status or "").lower() != "failed":
+		frappe.throw(_("Only failed outgoing messages can be retried"))
+
+	# Same steps as the bulk retry: the template path only sends when there is no message_id.
+	doc.message_id = None
+	doc.send_outgoing()
+	doc.status = "Success"
+	doc.db_update()
+
+	return frappe.db.sql(
+		f"select {MESSAGE_FIELDS} from `tabWhatsApp Message` m where m.name = %s", doc.name, as_dict=True
+	)[0]
+
+
 def content_type_for(attach):
 	if not attach:
 		return "text"

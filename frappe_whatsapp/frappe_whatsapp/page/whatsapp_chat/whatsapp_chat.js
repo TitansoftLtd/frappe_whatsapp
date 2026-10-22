@@ -299,6 +299,28 @@ class WhatsAppChatPage {
 			.wa-meta { float: right; margin: 6px 0 -4px 10px; font-size: 11px; color: var(--wa-muted); display: inline-flex; align-items: center; gap: 3px; }
 			.wa-tick.read { color: var(--wa-tick-read); }
 			.wa-tick.failed { color: var(--wa-danger); }
+			.wa-retry {
+				clear: both;
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				padding-top: 6px;
+				font-size: 12px;
+				color: var(--wa-danger);
+			}
+			.wa-retry button {
+				border: 0;
+				background: transparent;
+				padding: 0;
+				color: var(--wa-green-dark);
+				font-weight: 600;
+				cursor: pointer;
+				display: inline-flex;
+				align-items: center;
+				gap: 3px;
+			}
+			[data-theme="dark"] .wa-retry button { color: var(--wa-green); }
+			.wa-retry button:disabled { opacity: 0.6; cursor: wait; }
 			.wa-notice {
 				margin: 0 16px 8px;
 				padding: 8px 12px;
@@ -507,6 +529,24 @@ class WhatsAppChatPage {
 			.finally(() => this.$composer.find(".wa-send").prop("disabled", false));
 	}
 
+	retry($button) {
+		const name = $button.attr("data-name");
+		$button.prop("disabled", true).text(__("Retrying..."));
+		return frappe
+			.xcall(WA_METHOD + "retry_message", { name })
+			.then((msg) => {
+				const i = this.messages.findIndex((m) => m.name === name);
+				if (i !== -1) this.messages[i] = msg;
+				this.render_messages({ keep_scroll: true });
+				this.load_conversations();
+				frappe.show_alert({ message: __("Message sent"), indicator: "green" });
+			})
+			.catch(() => {
+				// The server's error dialog explains why; restore the button for another try.
+				this.render_messages({ keep_scroll: true });
+			});
+	}
+
 	new_chat() {
 		frappe.prompt(
 			[
@@ -631,6 +671,9 @@ class WhatsAppChatPage {
 		});
 		this.$chat.find(".wa-chat-refresh").on("click", () => this.load_messages({ keep_scroll: true }));
 		this.$chat.find(".wa-open-profile").on("click", () => this.open_profile());
+		this.$messages.on("click", ".wa-retry button", (e) => {
+			this.retry($(e.currentTarget));
+		});
 		this.$messages.on("click", ".wa-load-more", () => {
 			const oldest = this.messages[0];
 			if (oldest) this.load_messages({ before: oldest.creation });
@@ -749,6 +792,13 @@ class WhatsAppChatPage {
 			)}">
 				${label}${media}<span class="wa-text">${this.format_text(m.message)}</span>
 				<span class="wa-meta">${moment(m.creation).format("HH:mm")}${out ? this.ticks(m.status) : ""}</span>
+				${
+					failed
+						? `<div class="wa-retry">${__("Not delivered")} ·
+							<button data-name="${frappe.utils.escape_html(m.name)}">${frappe.utils.icon("rotate-ccw", "xs")} ${__("Retry")}</button>
+						</div>`
+						: ""
+				}
 			</div>`;
 	}
 
@@ -872,7 +922,7 @@ class WhatsAppChatPage {
 		if (s === "failed") return `<span class="wa-tick failed">${frappe.utils.icon("circle-alert", "xs")}</span>`;
 		if (s === "read") return `<span class="wa-tick read">${frappe.utils.icon("check-check", "xs")}</span>`;
 		if (s === "delivered") return `<span class="wa-tick">${frappe.utils.icon("check-check", "xs")}</span>`;
-		if (s === "sent") return `<span class="wa-tick">${frappe.utils.icon("check", "xs")}</span>`;
+		if (s === "sent" || s === "success") return `<span class="wa-tick">${frappe.utils.icon("check", "xs")}</span>`;
 		return `<span class="wa-tick">${frappe.utils.icon("clock", "xs")}</span>`;
 	}
 
